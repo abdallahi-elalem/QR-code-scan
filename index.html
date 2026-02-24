@@ -97,7 +97,7 @@
           .eq("code", code);
 
         count = count + 1;
-        setStatus("warn","Previously scanned. Possible tampering.");
+        setStatus("bad","Previously scanned. Possible tampering.");
       }
 
       document.getElementById("pname").textContent = data.product_name || "-";
