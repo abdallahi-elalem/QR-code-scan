@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>التحقق من العبوة</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto; background:#f6f7fb; margin:0; color:#111}
+    .wrap{max-width:720px; margin:40px auto; padding:16px}
+    .card{background:#fff; border-radius:16px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.06)}
+    .title{font-size:22px; margin:0 0 10px}
+    .sub{color:#555; margin:0 0 18px}
+    .badge{display:inline-block; padding:8px 12px; border-radius:999px; font-weight:600}
+    .ok{background:#e7f7ee; color:#116a3a}
+    .warn{background:#fff4e5; color:#8a4b00}
+    .bad{background:#ffe8e8; color:#8a1f1f}
+    .grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px}
+    .item{background:#f7f8fc; border-radius:12px; padding:12px}
+    .k{color:#666; font-size:13px}
+    .v{font-weight:700; margin-top:4px}
+    .footer{margin-top:14px; color:#666; font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 class="title">التحقق من العبوة</h1>
+      <p class="sub">هذه الصفحة تعرض حالة الختم ومعلومات المنتج.</p>
+
+      <div id="status" class="badge warn">جاري التحقق...</div>
+
+      <div class="grid" id="info" style="display:none">
+        <div class="item"><div class="k">اسم المنتج</div><div class="v" id="pname"></div></div>
+        <div class="item"><div class="k">رقم الدفعة</div><div class="v" id="batch"></div></div>
+        <div class="item"><div class="k">تاريخ الإنتاج</div><div class="v" id="prod"></div></div>
+        <div class="item"><div class="k">تاريخ الانتهاء</div><div class="v" id="exp"></div></div>
+        <div class="item"><div class="k">أول مسح</div><div class="v" id="first"></div></div>
+        <div class="item"><div class="k">عدد مرات المسح</div><div class="v" id="count"></div></div>
+      </div>
+
+      <div class="footer">
+        ملاحظة: تكرار المسح قد يشير إلى نسخ/تلاعب إذا كان المفترض أن هذا أول مسح للمستهلك.
+      </div>
+    </div>
+  </div>
+
+  <!-- حمّلي مكتبة Supabase أولاً -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+    // ====== ضعِي بيانات مشروعك هنا ======
+    const SUPABASE_URL = "https://fepnnwycahurpgehtjku.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_0dbDPI_5BzZlmRymLwa11w_FcyFQEnc";
+    // =====================================
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+
+    const statusEl = document.getElementById("status");
+    const infoEl = document.getElementById("info");
+
+    function setStatus(type, text){
+      statusEl.className = "badge " + type;
+      statusEl.textContent = text;
+    }
+
+    async function run(){
+      if(!code){
+        setStatus("bad","❌ لا يوجد كود في الرابط (أضف ?code=...)");
+        return;
+      }
+
+      // جلب بيانات العبوة
+      const { data, error } = await sb
+        .from("packages")
+        .select("*")
+        .eq("code", code)
+        .single();
+
+      if(error || !data){
+        setStatus("bad","❌ الكود غير موجود (قد يكون مزوّر)");
+        return;
+      }
+
+      let firstScan = data.first_scan_time;
+      let count = data.scan_count || 0;
+
+      if(!firstScan){
+        // أول مسح
+        const now = new Date().toISOString();
+        const { error: upErr } = await sb.from("packages")
+          .update({ first_scan_time: now, scan_count: 1 })
+          .eq("code", code);
+
+        if(upErr){
+          setStatus("bad","❌ خطأ في تسجيل المسح");
+          return;
+        }
+
+        firstScan = now;
+        count = 1;
+        setStatus("ok","✅ أول مسح: العبوة تبدو سليمة");
+      } else {
+        // مسح متكرر
+        await sb.from("packages")
+          .update({ scan_count: count + 1 })
+          .eq("code", code);
+
+        count = count + 1;
+        setStatus("warn","⚠️ تم المسح سابقاً: احتمال فتح/تلاعب");
+      }
+
+      // عرض البيانات
+      document.getElementById("pname").textContent = data.product_name || "-";
+      document.getElementById("batch").textContent = data.batch_no || "-";
+      document.getElementById("prod").textContent = data.production_date || "-";
+      document.getElementById("exp").textContent = data.expiry_date || "-";
+      document.getElementById("first").textContent = new Date(firstScan).toLocaleString();
+      document.getElementById("count").textContent = String(count);
+      infoEl.style.display = "grid";
+    }
+
+    run();
+  </script>
+</body>
+</html>
