@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>التحقق من العبوة</title>
+  <title>Package Verification</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto; background:#f6f7fb; margin:0; color:#111}
     .wrap{max-width:720px; margin:40px auto; padding:16px}
@@ -24,35 +24,31 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <h1 class="title">التحقق من العبوة</h1>
-      <p class="sub">هذه الصفحة تعرض حالة الختم ومعلومات المنتج.</p>
+      <h1 class="title">Package Verification</h1>
+      <p class="sub">This page displays seal status and product information.</p>
 
-      <div id="status" class="badge warn">جاري التحقق...</div>
+      <div id="status" class="badge warn">Checking...</div>
 
       <div class="grid" id="info" style="display:none">
-        <div class="item"><div class="k">اسم المنتج</div><div class="v" id="pname"></div></div>
-        <div class="item"><div class="k">رقم الدفعة</div><div class="v" id="batch"></div></div>
-        <div class="item"><div class="k">تاريخ الإنتاج</div><div class="v" id="prod"></div></div>
-        <div class="item"><div class="k">تاريخ الانتهاء</div><div class="v" id="exp"></div></div>
-        <div class="item"><div class="k">أول مسح</div><div class="v" id="first"></div></div>
-        <div class="item"><div class="k">عدد مرات المسح</div><div class="v" id="count"></div></div>
+        <div class="item"><div class="k">Product Name</div><div class="v" id="pname"></div></div>
+        <div class="item"><div class="k">Batch Number</div><div class="v" id="batch"></div></div>
+        <div class="item"><div class="k">Production Date</div><div class="v" id="prod"></div></div>
+        <div class="item"><div class="k">Expiry Date</div><div class="v" id="exp"></div></div>
+        <div class="item"><div class="k">First Scan</div><div class="v" id="first"></div></div>
+        <div class="item"><div class="k">Scan Count</div><div class="v" id="count"></div></div>
       </div>
 
       <div class="footer">
-        ملاحظة: تكرار المسح قد يشير إلى نسخ/تلاعب إذا كان المفترض أن هذا أول مسح للمستهلك.
+        Note: Multiple scans may indicate duplication or tampering if this was expected to be the first consumer scan.
       </div>
     </div>
   </div>
 
-  <!-- حمّلي مكتبة Supabase أولاً -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script>
-    // ====== ضعِي بيانات مشروعك هنا ======
     const SUPABASE_URL = "https://fepnnwycahurpgehtjku.supabase.co";
     const SUPABASE_KEY = "sb_publishable_0dbDPI_5BzZlmRymLwa11w_FcyFQEnc";
-    // =====================================
-
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const params = new URLSearchParams(location.search);
@@ -68,11 +64,10 @@
 
     async function run(){
       if(!code){
-        setStatus("bad","❌ لا يوجد كود في الرابط (أضف ?code=...)");
+        setStatus("bad","Invalid QR code.");
         return;
       }
 
-      // جلب بيانات العبوة
       const { data, error } = await sb
         .from("packages")
         .select("*")
@@ -80,7 +75,7 @@
         .single();
 
       if(error || !data){
-        setStatus("bad","❌ الكود غير موجود (قد يكون مزوّر)");
+        setStatus("bad","Code not found. Possible counterfeit.");
         return;
       }
 
@@ -88,31 +83,23 @@
       let count = data.scan_count || 0;
 
       if(!firstScan){
-        // أول مسح
         const now = new Date().toISOString();
-        const { error: upErr } = await sb.from("packages")
+        await sb.from("packages")
           .update({ first_scan_time: now, scan_count: 1 })
           .eq("code", code);
 
-        if(upErr){
-          setStatus("bad","❌ خطأ في تسجيل المسح");
-          return;
-        }
-
         firstScan = now;
         count = 1;
-        setStatus("ok","✅ أول مسح: العبوة تبدو سليمة");
+        setStatus("ok","First scan. Package appears authentic.");
       } else {
-        // مسح متكرر
         await sb.from("packages")
           .update({ scan_count: count + 1 })
           .eq("code", code);
 
         count = count + 1;
-        setStatus("warn","⚠️ تم المسح سابقاً: احتمال فتح/تلاعب");
+        setStatus("warn","Previously scanned. Possible tampering.");
       }
 
-      // عرض البيانات
       document.getElementById("pname").textContent = data.product_name || "-";
       document.getElementById("batch").textContent = data.batch_no || "-";
       document.getElementById("prod").textContent = data.production_date || "-";
